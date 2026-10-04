@@ -43,7 +43,7 @@ button{cursor:pointer;}
 
 /* ---------- stage ---------- */
 .stage{height:100%;display:flex;align-items:center;justify-content:center;gap:72px;padding:16px;}
-.rail{width:250px;flex:none;}
+.rail{width:250px;flex:none;max-height:100%;overflow-y:auto;padding-right:4px;}
 .brand{font-family:var(--display);font-weight:800;font-size:30px;letter-spacing:-.02em;line-height:1.05;margin:0 0 6px;}
 .brand-sub{color:var(--muted);margin:0 0 28px;font-size:15px;max-width:22ch;}
 .rail ol{list-style:none;margin:0;padding:0;border-left:2px solid var(--line);}
@@ -172,6 +172,33 @@ h1:focus{outline:none;}
 .toast{position:absolute;left:50%;bottom:110px;transform:translate(-50%,20px);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:12px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:all .25s;z-index:10;white-space:nowrap;}
 .toast.show{opacity:1;transform:translate(-50%,0);}
 
+
+/* data-flow panel */
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px;}
+.btns .theme-btn{margin-top:0;}
+.flow{margin-top:24px;border-top:1px solid var(--line);padding-top:16px;}
+.flow h2{font-family:var(--display);font-size:16px;margin:0 0 2px;}
+.flow .what{color:var(--muted);font-size:13px;margin:0 0 10px;min-height:1.4em;}
+.rail .flow ol{border:0;}
+.flow li{display:flex;gap:10px;align-items:flex-start;padding:5px 0;color:var(--muted);}
+.flow li i{width:10px;height:10px;border-radius:50%;background:var(--line);margin-top:5px;flex:none;transition:background .2s,transform .2s;}
+.flow li b{display:block;color:var(--ink);font-size:13px;font-weight:700;}
+.flow li span{display:block;font-size:12px;line-height:1.3;}
+.flow li.active i{background:var(--orchid);transform:scale(1.4);}
+.flow li.done i{background:#2fa66a;}
+.flow li.skip{opacity:.45;}
+.flow li.err i{background:var(--danger);}
+.flow li.err b,.flow li.err span{color:var(--danger);}
+.flow-note{font-size:12px;color:var(--muted);margin:8px 0 0;line-height:1.35;}
+.lock[hidden]{display:none;}
+.lock.net{margin-top:0;}
+.demo{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--muted);padding:2px 2px 0;}
+.demo input{width:18px;height:18px;accent-color:var(--orchid);flex:none;}
+.btn.loading{pointer-events:none;opacity:.85;}
+.spin{width:18px;height:18px;border:3px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.pcard .st{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;margin-top:8px;background:var(--field);color:var(--orchid);}
+
 @media (max-width:900px){.rail{display:none;}.stage{padding:0;}}
 @media (max-width:520px){
   .device{width:100%;height:100%;border-radius:0;box-shadow:none;}
@@ -189,7 +216,16 @@ h1:focus{outline:none;}
     <p class="brand">Project<br>Match</p>
     <p class="brand-sub">Find the student project team that fits your skills.</p>
     <ol id="rail"></ol>
-    <button class="theme-btn" id="themeBtn" type="button">Switch theme</button>
+    <div class="flow" aria-live="polite">
+      <h2>Data flow</h2>
+      <p class="what" id="flowWhat"></p>
+      <ol id="flowList"></ol>
+      <p class="flow-note">Prototype: processing runs in the browser and data is stored on this device. A real version would use a server and a database.</p>
+    </div>
+    <div class="btns">
+      <button class="theme-btn" id="themeBtn" type="button">Switch theme</button>
+      <button class="theme-btn" id="resetBtn" type="button">Reset demo data</button>
+    </div>
   </aside>
 
   <main class="device" id="device">
@@ -290,7 +326,11 @@ h1:focus{outline:none;}
         <div class="doc" id="dDoc"></div>
         <div class="lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>Your contact information is hidden before the approval.</div>
       </div>
-      <div class="foot"><button class="btn btn-primary" id="btnSend" type="button">Send request</button></div>
+      <div class="foot">
+        <div class="lock net" id="netErr" role="alert" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.8a15 15 0 0120 0M5 12.5a10 10 0 0114 0M8.5 16a5 5 0 017 0M12 19.5v.01M3 3l18 18"/></svg>No connection. Your request was not sent. Check your Internet and try again.</div>
+        <button class="btn btn-primary" id="btnSend" type="button"><span id="sendLabel">Send request</span></button>
+        <label class="demo"><input type="checkbox" id="offToggle"><span>Prototype demo: simulate no connection</span></label>
+      </div>
     </section>
 
     <!-- 9 Pending -->
@@ -360,11 +400,58 @@ h1:focus{outline:none;}
   var S = { email:'', name:'', city:'', phone:'', uni:'', skills:[], interests:[], project:null };
   var stack = [];
   var current = null;
-
-  /* ---------- navigation ---------- */
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   var order = ['login','personal','profile','created','projects','detail','pending','accepted'];
 
+  /* ---------- storage layer (browser storage in this prototype) ---------- */
+  var KEY = 'projectmatch.v1';
+  var DB = { account:null, requests:{} };
+  try{
+    var raw = localStorage.getItem(KEY);
+    if(raw){ var d = JSON.parse(raw); if(d && typeof d==='object'){ DB.account = d.account || null; DB.requests = d.requests || {}; } }
+  }catch(e){}
+  function persist(){ try{ localStorage.setItem(KEY, JSON.stringify(DB)); }catch(e){} }
+
+  /* ---------- data-flow trace (side panel) ---------- */
+  var STEPS = [['Input','input'],['App','app'],['Network','net'],['Processing','proc'],['Storage','store'],['Output','out']];
+  var flowList = $('#flowList'), flowWhat = $('#flowWhat');
+  STEPS.forEach(function(s){
+    var li = document.createElement('li'); li.dataset.k = s[1];
+    li.innerHTML = '<i></i><div><b>'+s[0]+'</b><span></span></div>';
+    flowList.appendChild(li);
+  });
+  var traceTok = 0;
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r, reduce ? 0 : ms); }); }
+  function stepEl(k){ return $('li[data-k="'+k+'"]', flowList); }
+  /* plan: text per step (missing = not used). fail: {at, text, out}. Returns true / false / null (cancelled). */
+  async function trace(title, plan, fail){
+    var tok = ++traceTok;
+    flowWhat.textContent = title;
+    $$('li', flowList).forEach(function(li){
+      var k = li.dataset.k;
+      li.className = plan[k] ? '' : 'skip';
+      $('span', li).textContent = plan[k] || 'Not used in this action';
+    });
+    for(var i=0;i<STEPS.length;i++){
+      var k = STEPS[i][1];
+      if(!plan[k]) continue;
+      var li = stepEl(k);
+      li.className = 'active';
+      await sleep(240);
+      if(tok !== traceTok) return null;
+      if(fail && fail.at === k){
+        li.className = 'err'; $('span', li).textContent = fail.text;
+        var o = stepEl('out'); o.className = 'err'; $('span', o).textContent = fail.out;
+        return false;
+      }
+      li.className = 'done';
+    }
+    return true;
+  }
+
+  function isOffline(){ return $('#offToggle').checked || navigator.onLine === false; }
+
+  /* ---------- navigation ---------- */
   function go(id, opts){
     opts = opts || {};
     var next = document.getElementById(id);
@@ -382,7 +469,15 @@ h1:focus{outline:none;}
     current = id;
     var h = $('h1',next); if(h) try{h.focus({preventScroll:true});}catch(e){}
     updateRail();
-    if(id === 'projects') renderProjects();
+    if(id === 'projects'){
+      renderProjects();
+      trace('Match projects', {
+        input:'Your saved skills and interests',
+        proc:'Compares your skills with each project (fixed scores in this prototype)',
+        store:'Reads your profile and the project list',
+        out:'Projects ranked by match %'
+      });
+    }
     if(id === 'detail') renderDetail();
     if(id === 'pending') $('#pPill').textContent = S.project.name + ' · ' + S.project.match + '% match';
     if(id === 'accepted') $('#leader').textContent = S.project.leader;
@@ -393,10 +488,8 @@ h1:focus{outline:none;}
   }
   $$('[data-back]').forEach(function(b){ b.innerHTML = ICON_BACK; b.addEventListener('click',back); });
 
-  /* rail (desktop screen jumper) */
   var rail = $('#rail');
-  var railIds = ['login','personal','profile','created','projects','detail','pending','accepted'];
-  railIds.forEach(function(id){
+  order.forEach(function(id){
     var li = document.createElement('li');
     var b = document.createElement('button');
     b.type='button'; b.textContent = document.getElementById(id).dataset.label; b.dataset.id=id;
@@ -409,8 +502,7 @@ h1:focus{outline:none;}
   function jump(id){
     if(!S.project && (id==='detail'||id==='pending'||id==='accepted')) S.project = PROJECTS[0];
     var i = order.indexOf(id);
-    stack = order.slice(0,i).filter(function(x){return x!=='detail'||id!=='detail';});
-    var prev = current; current = null;
+    current = null;
     go(id,{jump:true});
     stack = order.slice(0,i);
   }
@@ -427,7 +519,7 @@ h1:focus{outline:none;}
   [['email','f-email','e-email'],['pass','f-pass','e-pass'],['name','f-name','e-name'],['city','f-city','e-city'],['phone','f-phone','e-phone'],['uni','f-uni','e-uni']]
     .forEach(function(a){ clearOnInput(a[0],a[1],a[2]); });
 
-  /* ---------- login ---------- */
+  /* ---------- login / create account ---------- */
   var eye = $('#eye'); eye.innerHTML = ICON_EYE;
   eye.addEventListener('click',function(){
     var p = $('#pass'), show = p.type==='password';
@@ -443,13 +535,45 @@ h1:focus{outline:none;}
     (a ? $('#pass') : $('#email')).focus();
     return false;
   }
-  $('#btnCreate').addEventListener('click',function(){ if(checkLogin()) go('personal'); });
-  $('#btnLogin').addEventListener('click',function(){
-    if(checkLogin()){
-      if(!S.name) S.name = S.email.split('@')[0];
-      if(!S.skills.length) S.skills = ['Figma','Python'];
-      go('projects');
+  function sameEmail(acc){ return acc && acc.email.toLowerCase() === S.email.toLowerCase(); }
+
+  $('#btnCreate').addEventListener('click',function(){
+    if(!checkLogin()) return;
+    if(sameEmail(DB.account)){
+      setErr('f-email','e-email','This email already has an account. Tap "I already have an account" to log in.');
+      trace('Create account', {
+        input:'Email and password', app:'Checks the format',
+        proc:'Looks up the email', store:'Reads saved accounts', out:'Result'
+      },{at:'proc', text:'Email is already registered', out:'Error shown under the email field'});
+      return;
     }
+    trace('Create account', {
+      input:'Email and password', app:'Checks the format',
+      proc:'Checks the email is new', store:'Reads saved accounts', out:'Next step: personal information'
+    });
+    go('personal');
+  });
+
+  $('#btnLogin').addEventListener('click',function(){
+    if(!checkLogin()) return;
+    if(!sameEmail(DB.account)){
+      setErr('f-email','e-email','No account found for this email. Tap "Create an account" to sign up.');
+      trace('Log in', {
+        input:'Email and password', app:'Checks the format',
+        proc:'Looks up the account by email', store:'Reads saved accounts', out:'Result'
+      },{at:'store', text:'No account with this email', out:'Error shown under the email field'});
+      return;
+    }
+    var a = DB.account;
+    S.name=a.name; S.city=a.city; S.phone=a.phone; S.uni=a.uni;
+    S.skills.splice(0,S.skills.length); a.skills.forEach(function(x){ S.skills.push(x); });
+    S.interests.splice(0,S.interests.length); a.interests.forEach(function(x){ S.interests.push(x); });
+    syncPickers();
+    trace('Log in', {
+      input:'Email and password', app:'Checks the format',
+      proc:'Looks up the account by email', store:'Reads your saved profile', out:'Opens your project list'
+    });
+    go('projects');
   });
   ['email','pass'].forEach(function(id){
     document.getElementById(id).addEventListener('keydown',function(e){ if(e.key==='Enter') $('#btnCreate').click(); });
@@ -470,7 +594,7 @@ h1:focus{outline:none;}
   });
 
   /* ---------- chip pickers ---------- */
-  function picker(boxId, inputId, addId, groupId, errId, options, selected){
+  function picker(boxId, inputId, addId, groupId, options, selected){
     var box = document.getElementById(boxId), input = document.getElementById(inputId);
     function render(){
       box.innerHTML='';
@@ -501,8 +625,13 @@ h1:focus{outline:none;}
     render();
     return render;
   }
-  picker('skillChips','skillIn','skillAdd','g-skills','e-skills',SKILL_OPTS,S.skills);
-  picker('intChips','intIn','intAdd','g-int','e-int',INT_OPTS,S.interests);
+  var renderSkills = picker('skillChips','skillIn','skillAdd','g-skills',SKILL_OPTS,S.skills);
+  var renderInts = picker('intChips','intIn','intAdd','g-int',INT_OPTS,S.interests);
+  function syncPickers(){
+    S.skills.forEach(function(x){ if(SKILL_OPTS.indexOf(x)<0) SKILL_OPTS.push(x); });
+    S.interests.forEach(function(x){ if(INT_OPTS.indexOf(x)<0) INT_OPTS.push(x); });
+    renderSkills(); renderInts();
+  }
 
   $('#btnDone').addEventListener('click',function(){
     var u = $('#uni').value.trim();
@@ -510,7 +639,19 @@ h1:focus{outline:none;}
     var b = S.skills.length>0, c = S.interests.length>0;
     $('#g-skills').classList.toggle('bad',!b);
     $('#g-int').classList.toggle('bad',!c);
-    if(a&&b&&c){ S.uni=u; go('created'); }
+    if(a&&b&&c){
+      S.uni = u;
+      DB.account = { email:S.email, name:S.name, city:S.city, phone:S.phone, uni:S.uni, skills:S.skills.slice(), interests:S.interests.slice() };
+      persist();
+      trace('Save profile', {
+        input:'Name, city, phone, university, skills, interests',
+        app:'Checks that required fields are filled',
+        proc:'Builds one profile record',
+        store:'Writes the profile to browser storage',
+        out:'"Profile created" screen'
+      });
+      go('created');
+    }
     else if(!a) $('#uni').focus();
   });
   $('#uni').addEventListener('keydown',function(e){ if(e.key==='Enter') $('#btnDone').click(); });
@@ -539,7 +680,17 @@ h1:focus{outline:none;}
       b.innerHTML = '<div class="ring">'+ringHTML(p.match)+'</div><div class="meta"><h3></h3><p></p></div>'+ICON_GO;
       $('h3',b).textContent = p.name + ' (' + p.match + '% match)';
       $('p',b).textContent = p.short;
-      b.addEventListener('click',function(){ S.project = p; go('detail'); });
+      var r = DB.requests[p.id];
+      if(r){
+        var st = document.createElement('span'); st.className='st';
+        st.textContent = r.status==='accepted' ? 'Accepted' : 'Request sent';
+        $('.meta',b).appendChild(st);
+      }
+      b.addEventListener('click',function(){
+        S.project = p;
+        var rr = DB.requests[p.id];
+        go(rr ? (rr.status==='accepted' ? 'accepted' : 'pending') : 'detail');
+      });
       cards.appendChild(b);
     });
     animateRings(cards);
@@ -549,24 +700,88 @@ h1:focus{outline:none;}
     $('#dTitle').textContent = p.name;
     $('#dMatch').textContent = p.match + '% match with your skills';
     $('#dRing').innerHTML = ringHTML(p.match);
-    $('#dDoc').innerHTML = '<h2>Project description</h2>' + p.body.replace(/<h2>Project name<\/h2>/,'<h2>Project name</h2>');
-    // remove duplicated heading: first h2 already "Project description" label for readability
     $('#dDoc').innerHTML = p.body;
+    $('#netErr').hidden = true;
+    $('#sendLabel').textContent = DB.requests[p.id] ? 'View request status' : 'Send request';
     animateRings($('#dRing'));
   }
-  $('#btnSend').addEventListener('click',function(){ go('pending'); });
+  $('#offToggle').addEventListener('change',function(){ if(!this.checked) $('#netErr').hidden = true; });
+
+  /* ---------- send request: the key action ---------- */
+  function setLoading(on){
+    var b = $('#btnSend');
+    b.classList.toggle('loading', on);
+    $('#sendLabel').textContent = on ? 'Sending…' : ($('#sendLabel').dataset.idle || 'Send request');
+    if(on){ $('#sendLabel').insertAdjacentHTML('beforebegin','<span class="spin" id="spin" aria-hidden="true"></span>'); }
+    else { var s = $('#spin'); if(s) s.remove(); }
+  }
+  $('#btnSend').addEventListener('click', async function(){
+    var btn = this, p = S.project;
+    if(btn.classList.contains('loading')) return;
+    $('#netErr').hidden = true;
+    var existing = DB.requests[p.id];
+    if(existing){ go(existing.status==='accepted' ? 'accepted' : 'pending'); return; }
+
+    $('#sendLabel').dataset.idle = 'Send request';
+    setLoading(true);
+    var offline = isOffline();
+    var ok = await trace('Send request', {
+      input:'Tap "Send request" for ' + p.name + ' with your saved profile',
+      app:'Packs the request and shows "Sending…"',
+      net:'Needs Internet to reach the leader',
+      proc:'Checks no request exists yet, creates a "pending" record',
+      store:'Saves the request',
+      out:'"Request sent" screen'
+    }, offline ? { at:'net', text:'No connection', out:'Error shown. Request is not saved or confirmed.' } : null);
+    setLoading(false);
+    if(ok === null || current !== 'detail'){ $('#sendLabel').textContent = DB.requests[p.id] ? 'View request status' : 'Send request'; return; }
+    if(ok === false){
+      $('#netErr').hidden = false;
+      $('#sendLabel').textContent = 'Try again';
+      $('#sendLabel').dataset.idle = 'Try again';
+      return;
+    }
+    DB.requests[p.id] = { status:'pending', at:Date.now() };
+    persist();
+    $('#sendLabel').textContent = 'View request status';
+    go('pending');
+  });
 
   /* ---------- pending / accepted ---------- */
-  $('#btnApprove').addEventListener('click',function(){ go('accepted'); });
-  $('#btnWithdraw').addEventListener('click',function(){ stack = ['login','personal','profile','created']; go('projects',{back:true}); });
-  $('#btnAgain').addEventListener('click',function(){ stack = ['login','personal','profile','created']; go('projects',{back:true}); });
-  $('#btnRestart').addEventListener('click',function(){
-    S.project=null; stack=[];
-    $$('input').forEach(function(i){ i.value=''; });
-    S.skills.length=0; S.interests.length=0;
-    $$('#skillChips .chip,#intChips .chip').forEach(function(c){ c.setAttribute('aria-pressed','false'); });
-    go('login',{jump:true});
+  $('#btnApprove').addEventListener('click',function(){
+    var id = S.project.id;
+    DB.requests[id] = { status:'accepted', at:Date.now() };
+    persist();
+    trace('Leader approves the request', {
+      input:'Leader approves (simulated by this button)',
+      proc:'Changes the request status to "accepted"',
+      store:'Updates the saved request',
+      out:'"Accepted" screen with the leader\'s contacts'
+    });
+    go('accepted');
   });
+  function toProjects(){ stack = ['login','personal','profile','created']; go('projects',{back:true}); }
+  $('#btnWithdraw').addEventListener('click',toProjects);
+  $('#btnAgain').addEventListener('click',toProjects);
+
+  function resetAll(){
+    DB = { account:null, requests:{} };
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    S.email=S.name=S.city=S.phone=S.uni=''; S.project=null;
+    S.skills.splice(0,S.skills.length); S.interests.splice(0,S.interests.length);
+    $$('input[type="text"],input[type="email"],input[type="tel"],input[type="password"],input:not([type])').forEach(function(i){ i.value=''; });
+    $$('.field.bad').forEach(function(f){ f.classList.remove('bad'); });
+    $('#offToggle').checked = false;
+    syncPickers();
+    $$('li', flowList).forEach(function(li){ li.className=''; $('span',li).textContent=''; });
+    flowWhat.textContent = 'Do an action to see how data moves.';
+    stack = [];
+    if(current === 'login'){ $('#email').focus(); } else go('login',{jump:true});
+    toast('Demo data cleared');
+  }
+  $('#btnRestart').addEventListener('click',resetAll);
+  $('#resetBtn').addEventListener('click',resetAll);
+
   $('#btnCopy').addEventListener('click',function(){
     var t = S.project.leader;
     function done(){ toast('Copied ' + t); }
@@ -585,8 +800,10 @@ h1:focus{outline:none;}
     r.dataset.theme = dark ? 'light':'dark';
   });
 
+  flowWhat.textContent = 'Do an action to see how data moves.';
   go('login');
 })();
+
 </script>
 </body>
 </html>
